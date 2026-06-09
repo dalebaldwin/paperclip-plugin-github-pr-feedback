@@ -129,7 +129,7 @@ If `paperclipai` is not on `PATH`, use `npx paperclipai`.
 For a published package install, use the package name instead of a local path:
 
 ```bash
-paperclipai plugin install paperclip-plugin-github-pr-feedback
+paperclipai plugin install paperclip-plugin-github-pr
 paperclipai plugin inspect paperclip.github-pr-feedback
 ```
 

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS plugin_github_pr_feedback_faf63ecd83.source_events (
   UNIQUE (company_id, source, surface, external_event_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS plugin_github_pr_feedback_faf63ecd83.source_events_status_idx
+CREATE INDEX IF NOT EXISTS source_events_status_idx
   ON plugin_github_pr_feedback_faf63ecd83.source_events (company_id, status, created_at);
 
 CREATE TABLE IF NOT EXISTS plugin_github_pr_feedback_faf63ecd83.webhook_deliveries (
