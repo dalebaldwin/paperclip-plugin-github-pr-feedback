@@ -1,6 +1,6 @@
 {
   "name": "paperclip-plugin-github-pr-feedback",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Reliable GitHub pull request feedback, review, and CI intake for Paperclip.",
   "scripts": {
