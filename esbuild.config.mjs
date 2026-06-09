@@ -9,7 +9,6 @@ const shared = {
   platform: "node",
   target: "node22",
   sourcemap: true,
-  packages: "external",
 };
 
 await mkdir("dist/ui", { recursive: true });
