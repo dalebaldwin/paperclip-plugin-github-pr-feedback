@@ -543,11 +543,11 @@ const plugin = definePlugin({
         throw new Error("companyId is required");
       }
       const project = await ctx.projects.managed.reconcile(
-        "github-intake",
+        "github-pr-feedback",
         companyId,
       );
       const agent = await ctx.agents.managed.reconcile(
-        "github-intake-monitor",
+        "github-pr-feedback-monitor",
         companyId,
       );
       const routine = await ctx.routines.managed.reconcile(
@@ -555,7 +555,7 @@ const plugin = definePlugin({
         companyId,
       );
       const skill = await ctx.skills.managed.reconcile(
-        "github-source-event-routing",
+        "github-pr-feedback-routing",
         companyId,
       );
       return { project, agent, routine, skill };
@@ -725,7 +725,7 @@ const plugin = definePlugin({
   async onHealth() {
     return {
       status: "ok",
-      message: "GitHub Source Intake worker is running",
+      message: "GitHub PR Feedback worker is running",
       details: {
         surfaces: [
           "issue_comments",

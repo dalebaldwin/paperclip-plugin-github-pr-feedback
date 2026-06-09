@@ -1,9 +1,9 @@
 {
-  "name": "paperclip-plugin-github",
+  "name": "paperclip-plugin-github-pr-feedback",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Reliable GitHub PR, review, issue, and check-run intake for Paperclip.",
+  "description": "Reliable GitHub pull request feedback, review, and CI intake for Paperclip.",
   "scripts": {
     "build": "node ./esbuild.config.mjs",
     "dev": "node ./esbuild.config.mjs --watch",

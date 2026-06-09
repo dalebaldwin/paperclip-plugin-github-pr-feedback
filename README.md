@@ -1,11 +1,13 @@
-# Paperclip GitHub Source Intake
+# Paperclip GitHub PR Feedback
 
-Reliable GitHub PR, review, issue, workflow, and check-run intake for Paperclip.
+Reliable GitHub pull request feedback, review, workflow, and check-run intake
+for Paperclip.
 
-This plugin is intended to make GitHub operational signals first-class Paperclip
-source events. It exists because agents should not rely on ad hoc polling or
-prompt memory to notice pull request review feedback, inline review threads,
-failing checks, workflow state, merge conflicts, or issue comments.
+This plugin is intended to make GitHub pull request operational signals
+first-class Paperclip source events. It exists because agents should not rely on
+ad hoc polling or prompt memory to notice pull request review feedback, inline
+review threads, failing checks, workflow state, merge conflicts, or issue
+comments.
 
 ## Current Status
 
@@ -21,6 +23,22 @@ This repository is an initial scaffold. It defines:
 - tests for source-event normalization, including review threads
 
 The full GitHub REST and GraphQL scanners are intentionally next-step work.
+
+## Usability Gate
+
+The current scaffold is installable and useful as the shared contract for GitHub
+PR feedback, but it is not yet a fully operational unattended connector.
+
+Before it can keep PR feedback moving without manual intervention, it needs:
+
+- webhook signature verification using the configured webhook secret ref
+- GitHub webhook payload conversion into normalized source events
+- GitHub REST or GraphQL scanners for hourly reconciliation
+- source-event routing into Paperclip issues or wakeups
+- durable handling for failing checks, stale review threads, merge conflicts,
+  and late comments after merge
+- ignored-author and bot policy enforcement
+- repository settings validation in the plugin settings UI
 
 ## Why This Exists
 
@@ -103,7 +121,7 @@ For local Paperclip development:
 ```bash
 pnpm dev
 paperclipai plugin install <absolute-path-to-plugin>
-paperclipai plugin inspect paperclip.github-source-intake
+paperclipai plugin inspect paperclip.github-pr-feedback
 ```
 
 If `paperclipai` is not on `PATH`, use `npx paperclipai`.
@@ -111,8 +129,8 @@ If `paperclipai` is not on `PATH`, use `npx paperclipai`.
 For a published package install, use the package name instead of a local path:
 
 ```bash
-paperclipai plugin install paperclip-plugin-github
-paperclipai plugin inspect paperclip.github-source-intake
+paperclipai plugin install paperclip-plugin-github-pr-feedback
+paperclipai plugin inspect paperclip.github-pr-feedback
 ```
 
 ## Planned MVP

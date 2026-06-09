@@ -19,11 +19,11 @@ function StatusSummary() {
   });
 
   if (status.loading) {
-    return <div>Loading GitHub intake status...</div>;
+    return <div>Loading GitHub PR feedback status...</div>;
   }
 
   if (status.error) {
-    return <div>Failed to load GitHub intake status.</div>;
+    return <div>Failed to load GitHub PR feedback status.</div>;
   }
 
   const data = status.data ?? {
@@ -56,16 +56,16 @@ function StatusSummary() {
 export function DashboardWidget() {
   return (
     <section style={{ display: "grid", gap: 12 }}>
-      <h3>GitHub Intake</h3>
+      <h3>GitHub PR Feedback</h3>
       <StatusSummary />
     </section>
   );
 }
 
-export function GitHubIntakePage() {
+export function GitHubPrFeedbackPage() {
   return (
     <main style={{ maxWidth: 960, padding: 24 }}>
-      <h1>GitHub Source Intake</h1>
+      <h1>GitHub PR Feedback</h1>
       <StatusSummary />
       <MarkdownBlock
         content={[
@@ -95,7 +95,7 @@ export function SettingsPage() {
 
   return (
     <main style={{ maxWidth: 760, padding: 24 }}>
-      <h1>GitHub Intake Settings</h1>
+      <h1>GitHub PR Feedback Settings</h1>
       <p>
         Configure GitHub credentials in the plugin instance settings, then
         reconcile managed Paperclip resources for each company.

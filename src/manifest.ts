@@ -1,12 +1,12 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 const manifest: PaperclipPluginManifestV1 = {
-  id: "paperclip.github-source-intake",
+  id: "paperclip.github-pr-feedback",
   apiVersion: 1,
   version: "0.1.0",
-  displayName: "GitHub Source Intake",
+  displayName: "GitHub PR Feedback",
   description:
-    "Builds a canonical GitHub pull-request, review, and check-run graph for Paperclip.",
+    "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
   author: "Dale Baldwin",
   categories: ["connector", "automation", "ui"],
   capabilities: [
@@ -61,7 +61,7 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   },
   database: {
-    namespaceSlug: "github_source_intake",
+    namespaceSlug: "github_pr_feedback",
     migrationsDir: "migrations",
     coreReadTables: ["issues", "issue_comments", "agents", "projects"],
   },
@@ -156,24 +156,24 @@ const manifest: PaperclipPluginManifestV1 = {
   ],
   projects: [
     {
-      projectKey: "github-intake",
-      displayName: "GitHub Intake",
-      description: "Operational work created by the GitHub Source Intake plugin.",
+      projectKey: "github-pr-feedback",
+      displayName: "GitHub PR Feedback",
+      description: "Operational work created by the GitHub PR Feedback plugin.",
       status: "in_progress",
     },
   ],
   agents: [
     {
-      agentKey: "github-intake-monitor",
-      displayName: "GitHub Intake Monitor",
+      agentKey: "github-pr-feedback-monitor",
+      displayName: "GitHub PR Feedback Monitor",
       role: "operations",
-      title: "GitHub Intake Monitor",
+      title: "GitHub PR Feedback Monitor",
       capabilities:
         "Reviews GitHub source events, routes PR review/CI/merge conflict feedback, and audits missed GitHub surfaces.",
       adapterPreference: ["codex_local", "claude_local", "process"],
       instructions: {
         content:
-          "You monitor normalized GitHub source events created by the GitHub Source Intake plugin. Route actionable PR review, inline thread, CI, workflow, and issue feedback while preserving source ids.",
+          "You monitor normalized GitHub source events created by the GitHub PR Feedback plugin. Route actionable PR review, inline thread, CI, workflow, and issue feedback while preserving source ids.",
       },
     },
   ],
@@ -185,11 +185,11 @@ const manifest: PaperclipPluginManifestV1 = {
         "Review plugin-detected GitHub source events and route missed PR/review/check feedback.",
       assigneeRef: {
         resourceKind: "agent",
-        resourceKey: "github-intake-monitor",
+        resourceKey: "github-pr-feedback-monitor",
       },
       projectRef: {
         resourceKind: "project",
-        resourceKey: "github-intake",
+        resourceKey: "github-pr-feedback",
       },
       priority: "high",
       triggers: [
@@ -207,8 +207,8 @@ const manifest: PaperclipPluginManifestV1 = {
   ],
   skills: [
     {
-      skillKey: "github-source-event-routing",
-      displayName: "GitHub Source Event Routing",
+      skillKey: "github-pr-feedback-routing",
+      displayName: "GitHub PR Feedback Routing",
       description:
         "Classify GitHub PR review, inline thread, issue, workflow, and check-run source events.",
     },
@@ -217,21 +217,21 @@ const manifest: PaperclipPluginManifestV1 = {
     slots: [
       {
         type: "dashboardWidget",
-        id: "github-intake-health",
-        displayName: "GitHub Intake",
+        id: "github-pr-feedback-health",
+        displayName: "GitHub PR Feedback",
         exportName: "DashboardWidget",
       },
       {
         type: "page",
-        id: "github-intake",
-        displayName: "GitHub Intake",
-        exportName: "GitHubIntakePage",
-        routePath: "github-intake",
+        id: "github-pr-feedback",
+        displayName: "GitHub PR Feedback",
+        exportName: "GitHubPrFeedbackPage",
+        routePath: "github-pr-feedback",
       },
       {
         type: "settingsPage",
         id: "settings",
-        displayName: "GitHub Intake",
+        displayName: "GitHub PR Feedback",
         exportName: "SettingsPage",
       },
     ],
