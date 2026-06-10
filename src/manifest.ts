@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.github-pr-feedback",
   apiVersion: 1,
-  version: "0.1.11",
+  version: "0.1.12",
   displayName: "GitHub PR Feedback",
   description:
     "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
@@ -15,9 +15,6 @@ const manifest: PaperclipPluginManifestV1 = {
     "database.namespace.migrate",
     "database.namespace.read",
     "database.namespace.write",
-    "http.outbound",
-    "secrets.read-ref",
-    "jobs.schedule",
     "webhooks.receive",
     "issues.read",
     "issues.create",
@@ -40,14 +37,6 @@ const manifest: PaperclipPluginManifestV1 = {
   instanceConfigSchema: {
     type: "object",
     properties: {
-      githubTokenSecretRef: {
-        type: "string",
-        title: "GitHub token secret ref",
-      },
-      webhookSecretRef: {
-        type: "string",
-        title: "Webhook verification secret ref",
-      },
       repositories: {
         type: "array",
         title: "Repositories",
@@ -74,22 +63,7 @@ const manifest: PaperclipPluginManifestV1 = {
       description: "Receives GitHub pull request, review, issue, and check webhooks.",
     },
   ],
-  jobs: [
-    {
-      jobKey: "hourly-reconcile",
-      displayName: "Hourly GitHub reconciliation",
-      description:
-        "Reconciles active GitHub PR comments, reviews, review threads, and checks.",
-      schedule: "0 * * * *",
-    },
-    {
-      jobKey: "daily-deep-scan",
-      displayName: "Daily GitHub deep scan",
-      description:
-        "Audits GitHub graph coverage and missed review/check surfaces.",
-      schedule: "31 3 * * *",
-    },
-  ],
+  jobs: [],
   apiRoutes: [
     {
       routeKey: "status",
@@ -172,30 +146,6 @@ const manifest: PaperclipPluginManifestV1 = {
       companyResolution: { from: "body", key: "companyId" },
     },
     {
-      routeKey: "backfill-pull-request",
-      method: "POST",
-      path: "/backfill/pull-request",
-      auth: "board-or-agent",
-      capability: "api.routes.register",
-      companyResolution: { from: "body", key: "companyId" },
-    },
-    {
-      routeKey: "backfill-open-pull-requests",
-      method: "POST",
-      path: "/backfill/open-pull-requests",
-      auth: "board-or-agent",
-      capability: "api.routes.register",
-      companyResolution: { from: "body", key: "companyId" },
-    },
-    {
-      routeKey: "reconcile-active-surfaces",
-      method: "POST",
-      path: "/reconcile/active-surfaces",
-      auth: "board-or-agent",
-      capability: "api.routes.register",
-      companyResolution: { from: "body", key: "companyId" },
-    },
-    {
       routeKey: "coverage-audit",
       method: "GET",
       path: "/coverage-audit",
@@ -219,11 +169,11 @@ const manifest: PaperclipPluginManifestV1 = {
       role: "operations",
       title: "GitHub PR Feedback Monitor",
       capabilities:
-        "Reviews GitHub source events, routes PR review/CI/merge conflict feedback, and audits missed GitHub surfaces.",
+        "Uses agent-owned GitHub credentials to discover open PR feedback, writes normalized source events into the plugin graph, routes PR review/CI/merge conflict feedback, and audits missed GitHub surfaces.",
       adapterPreference: ["codex_local", "claude_local", "process"],
       instructions: {
         content:
-          "You monitor normalized GitHub source events created by the GitHub PR Feedback plugin. Route actionable PR review, inline thread, CI, workflow, and issue feedback while preserving source ids.",
+          "You own GitHub source synchronization for this plugin. On each heartbeat, use your normal GitHub credentials to list configured/open PRs, comments, reviews, review threads, checks, workflow runs, merge health, and head SHA state. Register artifacts, surfaces, lifecycle, and normalized source events through the GitHub PR Feedback plugin APIs, then route actionable PR review, inline thread, CI, workflow, and issue feedback while preserving source ids.",
       },
     },
   ],
@@ -232,7 +182,7 @@ const manifest: PaperclipPluginManifestV1 = {
       routineKey: "hourly-github-reconciliation",
       title: "Hourly GitHub reconciliation",
       description:
-        "Review plugin-detected GitHub source events and route missed PR/review/check feedback.",
+        "Synchronize GitHub PR source surfaces into the plugin graph, then route missed PR/review/check feedback.",
       assigneeRef: {
         resourceKind: "agent",
         resourceKey: "github-pr-feedback-monitor",

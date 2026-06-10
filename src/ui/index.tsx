@@ -192,89 +192,19 @@ export function GitHubSidebarLink({ context }: PluginSidebarProps) {
   );
 }
 
-function BackfillControls() {
-  const host = useHostContext();
-  const backfillPullRequest = usePluginAction("backfill-pull-request");
-  const backfillOpenPullRequests = usePluginAction("backfill-open-pull-requests");
-  const reconcileActiveSurfaces = usePluginAction("reconcile-active-surfaces");
-  const [repository, setRepository] = React.useState("");
-  const [pullRequestNumber, setPullRequestNumber] = React.useState("");
-  const [message, setMessage] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-
-  function run(action: Promise<unknown>, success: string) {
-    setBusy(true);
-    setMessage("");
-    action
-      .then(() => setMessage(success))
-      .catch(() => setMessage("Backfill failed. Check plugin logs and credentials."))
-      .finally(() => setBusy(false));
-  }
-
+function AgentSyncContract() {
   return (
     <section style={sectionStyle}>
-      <h2>Backfill Inputs</h2>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input
-          aria-label="GitHub repository"
-          placeholder="owner/repository"
-          value={repository}
-          onChange={(event) => setRepository(event.currentTarget.value)}
-        />
-        <input
-          aria-label="Pull request number"
-          placeholder="PR number"
-          value={pullRequestNumber}
-          onChange={(event) => setPullRequestNumber(event.currentTarget.value)}
-        />
-        <button
-          type="button"
-          disabled={busy || !repository.trim() || !pullRequestNumber.trim()}
-          onClick={() =>
-            run(
-              backfillPullRequest({
-                companyId: host.companyId,
-                repository,
-                pullRequestNumber: Number(pullRequestNumber),
-              }),
-              "Pull request backfill completed.",
-            )
-          }
-        >
-          Backfill PR
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          disabled={busy || !repository.trim()}
-          onClick={() =>
-            run(
-              backfillOpenPullRequests({
-                companyId: host.companyId,
-                repository,
-                maxPullRequests: 25,
-              }),
-              "Open pull request backfill completed.",
-            )
-          }
-        >
-          Backfill open PRs
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            run(
-              reconcileActiveSurfaces({ companyId: host.companyId }),
-              "Active GitHub surface reconciliation completed.",
-            )
-          }
-        >
-          Reconcile active surfaces
-        </button>
-      </div>
-      {message ? <p>{message}</p> : null}
+      <h2>Agent Sync Contract</h2>
+      <p>
+        The plugin stores the canonical PR feedback graph. The PR Review Handler
+        owns GitHub API reads with its normal agent credentials.
+      </p>
+      <p>
+        On each heartbeat the agent should register PR artifacts, surfaces,
+        lifecycle, source events, and current head SHA/check state through this
+        plugin before making review-clear or blocked decisions.
+      </p>
     </section>
   );
 }
@@ -529,7 +459,7 @@ export function GitHubPrFeedbackPage() {
     <main style={pageStyle}>
       <h1>GitHub PR Feedback</h1>
       <StatusSummary />
-      <BackfillControls />
+      <AgentSyncContract />
       <TrackedArtifacts />
       <CoverageGaps />
       <RecentEvents />
@@ -548,8 +478,9 @@ export function SettingsPage() {
     <main style={{ maxWidth: 760, padding: 24 }}>
       <h1>GitHub PR Feedback Settings</h1>
       <p>
-        Configure GitHub credentials in the plugin instance settings, then
-        reconcile managed Paperclip resources for each company.
+        Configure repository scope and ignored authors in plugin instance
+        settings. GitHub credentials stay with the agents that synchronize this
+        graph.
       </p>
       <button
         type="button"
