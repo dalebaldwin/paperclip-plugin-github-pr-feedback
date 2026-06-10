@@ -1,9 +1,11 @@
 import * as React from "react";
 import {
   useHostContext,
+  useHostNavigation,
   usePluginAction,
   usePluginData,
 } from "@paperclipai/plugin-sdk/ui";
+import type { PluginSidebarProps } from "@paperclipai/plugin-sdk/ui";
 
 type StatusData = {
   artifactCount: number;
@@ -145,6 +147,48 @@ function StatusSummary() {
         <div>{formatCounts(data.webhookDeliveryCounts)}</div>
       </div>
     </div>
+  );
+}
+
+export function GitHubSidebarLink({ context }: PluginSidebarProps) {
+  const hostNavigation = useHostNavigation();
+  const href = hostNavigation.resolveHref("/github-pr-feedback");
+  const isActive =
+    typeof window !== "undefined" && window.location.pathname === href;
+
+  if (!context.companyId) {
+    return null;
+  }
+
+  return (
+    <a
+      {...hostNavigation.linkProps("/github-pr-feedback")}
+      aria-current={isActive ? "page" : undefined}
+      className={[
+        "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors",
+        isActive
+          ? "bg-accent text-foreground"
+          : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+      ].join(" ")}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="18" cy="18" r="3" />
+        <circle cx="6" cy="6" r="3" />
+        <path d="M6 9v4a5 5 0 0 0 5 5h4" />
+        <path d="M18 15V6" />
+        <path d="M15 9l3-3 3 3" />
+      </svg>
+      <span className="flex-1 truncate">GitHub PR Feedback</span>
+    </a>
   );
 }
 

@@ -20,19 +20,16 @@ describe("source graph routes", () => {
     );
   });
 
-  it("exposes the source graph page through the sidebar", () => {
-    const launcher = manifest.ui?.launchers?.find(
+  it("exposes the source graph page through an icon sidebar slot", () => {
+    const sidebarSlot = manifest.ui?.slots?.find(
       (entry) => entry.id === "github-pr-feedback-sidebar",
     );
 
     expect(manifest.capabilities).toContain("ui.sidebar.register");
-    expect(launcher).toMatchObject({
+    expect(sidebarSlot).toMatchObject({
+      type: "sidebar",
       displayName: "GitHub PR Feedback",
-      placementZone: "sidebar",
-      action: {
-        type: "navigate",
-        target: "github-pr-feedback",
-      },
+      exportName: "GitHubSidebarLink",
     });
   });
 });
