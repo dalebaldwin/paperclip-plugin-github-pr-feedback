@@ -41,7 +41,7 @@ async function upsertArtifact(
   ctx: PluginContext,
   event: NormalizedSourceEvent,
 ): Promise<string> {
-  const rows = await ctx.db.query<{ id: string }>(
+  await ctx.db.execute(
     `INSERT INTO ${table(ctx.db.namespace, "source_artifacts")}
       (company_id, source, artifact_kind, external_id, repository, url, title, last_seen_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, now())
@@ -50,8 +50,7 @@ async function upsertArtifact(
        url = COALESCE(EXCLUDED.url, ${table(ctx.db.namespace, "source_artifacts")}.url),
        title = COALESCE(EXCLUDED.title, ${table(ctx.db.namespace, "source_artifacts")}.title),
        last_seen_at = now(),
-       updated_at = now()
-     RETURNING id`,
+       updated_at = now()`,
     [
       event.companyId,
       event.source,
@@ -60,6 +59,21 @@ async function upsertArtifact(
       event.repository,
       event.artifactUrl,
       event.artifactTitle,
+    ],
+  );
+
+  const rows = await ctx.db.query<{ id: string }>(
+    `SELECT id
+     FROM ${table(ctx.db.namespace, "source_artifacts")}
+     WHERE company_id = $1
+       AND source = $2
+       AND artifact_kind = $3
+       AND external_id = $4`,
+    [
+      event.companyId,
+      event.source,
+      event.artifactKind,
+      event.artifactExternalId,
     ],
   );
 
@@ -75,6 +89,33 @@ async function registerArtifact(
   input: RegisterSourceArtifactInput,
 ) {
   const artifact = normalizeArtifactInput(input);
+  await ctx.db.execute(
+    `INSERT INTO ${table(ctx.db.namespace, "source_artifacts")}
+      (company_id, source, artifact_kind, external_id, repository, url, title, status, owner_lane, discovered_from, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+     ON CONFLICT (company_id, source, artifact_kind, external_id)
+     DO UPDATE SET
+       url = COALESCE(EXCLUDED.url, ${table(ctx.db.namespace, "source_artifacts")}.url),
+       title = COALESCE(EXCLUDED.title, ${table(ctx.db.namespace, "source_artifacts")}.title),
+       status = EXCLUDED.status,
+       owner_lane = COALESCE(EXCLUDED.owner_lane, ${table(ctx.db.namespace, "source_artifacts")}.owner_lane),
+       discovered_from = COALESCE(EXCLUDED.discovered_from, ${table(ctx.db.namespace, "source_artifacts")}.discovered_from),
+       last_seen_at = now(),
+       updated_at = now()`,
+    [
+      artifact.companyId,
+      artifact.source,
+      artifact.artifactKind,
+      artifact.externalId,
+      artifact.repository ?? null,
+      artifact.url ?? null,
+      artifact.title ?? null,
+      artifact.status,
+      artifact.ownerLane ?? null,
+      artifact.discoveredFrom ?? null,
+    ],
+  );
+
   const rows = await ctx.db.query<{
     id: string;
     company_id: string;
@@ -88,30 +129,17 @@ async function registerArtifact(
     owner_lane: string | null;
     discovered_from: string | null;
   }>(
-    `INSERT INTO ${table(ctx.db.namespace, "source_artifacts")}
-      (company_id, source, artifact_kind, external_id, repository, url, title, status, owner_lane, discovered_from, last_seen_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-     ON CONFLICT (company_id, source, artifact_kind, external_id)
-     DO UPDATE SET
-       url = COALESCE(EXCLUDED.url, ${table(ctx.db.namespace, "source_artifacts")}.url),
-       title = COALESCE(EXCLUDED.title, ${table(ctx.db.namespace, "source_artifacts")}.title),
-       status = EXCLUDED.status,
-       owner_lane = COALESCE(EXCLUDED.owner_lane, ${table(ctx.db.namespace, "source_artifacts")}.owner_lane),
-       discovered_from = COALESCE(EXCLUDED.discovered_from, ${table(ctx.db.namespace, "source_artifacts")}.discovered_from),
-       last_seen_at = now(),
-       updated_at = now()
-     RETURNING id, company_id, source, artifact_kind, external_id, repository, url, title, status, owner_lane, discovered_from`,
+    `SELECT id, company_id, source, artifact_kind, external_id, repository, url, title, status, owner_lane, discovered_from
+     FROM ${table(ctx.db.namespace, "source_artifacts")}
+     WHERE company_id = $1
+       AND source = $2
+       AND artifact_kind = $3
+       AND external_id = $4`,
     [
       artifact.companyId,
       artifact.source,
       artifact.artifactKind,
       artifact.externalId,
-      artifact.repository ?? null,
-      artifact.url ?? null,
-      artifact.title ?? null,
-      artifact.status,
-      artifact.ownerLane ?? null,
-      artifact.discoveredFrom ?? null,
     ],
   );
 
@@ -181,19 +209,27 @@ async function registerArtifactEdge(
   const edge = normalizeEdgeInput(input);
   const fromId = await resolveArtifactId(ctx, edge.companyId, edge.from);
   const toId = await resolveArtifactId(ctx, edge.companyId, edge.to);
+  await ctx.db.execute(
+    `INSERT INTO ${table(ctx.db.namespace, "source_artifact_edges")}
+      (company_id, from_artifact_id, to_artifact_id, relationship)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (from_artifact_id, to_artifact_id, relationship)
+     DO UPDATE SET updated_at = now()`,
+    [edge.companyId, fromId, toId, edge.relationship],
+  );
+
   const rows = await ctx.db.query<{
     id: string;
     from_artifact_id: string;
     to_artifact_id: string;
     relationship: string;
   }>(
-    `INSERT INTO ${table(ctx.db.namespace, "source_artifact_edges")}
-      (company_id, from_artifact_id, to_artifact_id, relationship)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (from_artifact_id, to_artifact_id, relationship)
-     DO UPDATE SET updated_at = now()
-     RETURNING id, from_artifact_id, to_artifact_id, relationship`,
-    [edge.companyId, fromId, toId, edge.relationship],
+    `SELECT id, from_artifact_id, to_artifact_id, relationship
+     FROM ${table(ctx.db.namespace, "source_artifact_edges")}
+     WHERE from_artifact_id = $1
+       AND to_artifact_id = $2
+       AND relationship = $3`,
+    [fromId, toId, edge.relationship],
   );
 
   const row = rows[0];
@@ -215,13 +251,7 @@ async function registerSourceSurface(
 ) {
   const surface = normalizeSurfaceInput(input);
   const artifactId = await resolveArtifactId(ctx, surface.companyId, surface.artifact);
-  const rows = await ctx.db.query<{
-    id: string;
-    artifact_id: string;
-    surface: SourceSurface;
-    cursor_external_id: string | null;
-    cursor_version: string | null;
-  }>(
+  await ctx.db.execute(
     `INSERT INTO ${table(ctx.db.namespace, "source_surfaces")}
       (artifact_id, surface, cursor_external_id, cursor_version, last_scan_at)
      VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()))
@@ -230,8 +260,7 @@ async function registerSourceSurface(
        cursor_external_id = COALESCE(EXCLUDED.cursor_external_id, ${table(ctx.db.namespace, "source_surfaces")}.cursor_external_id),
        cursor_version = COALESCE(EXCLUDED.cursor_version, ${table(ctx.db.namespace, "source_surfaces")}.cursor_version),
        last_scan_at = EXCLUDED.last_scan_at,
-       updated_at = now()
-     RETURNING id, artifact_id, surface, cursor_external_id, cursor_version`,
+       updated_at = now()`,
     [
       artifactId,
       surface.surface,
@@ -239,6 +268,20 @@ async function registerSourceSurface(
       surface.cursorVersion ?? null,
       surface.lastScanAt ?? null,
     ],
+  );
+
+  const rows = await ctx.db.query<{
+    id: string;
+    artifact_id: string;
+    surface: SourceSurface;
+    cursor_external_id: string | null;
+    cursor_version: string | null;
+  }>(
+    `SELECT id, artifact_id, surface, cursor_external_id, cursor_version
+     FROM ${table(ctx.db.namespace, "source_surfaces")}
+     WHERE artifact_id = $1
+       AND surface = $2`,
+    [artifactId, surface.surface],
   );
 
   const row = rows[0];
@@ -260,16 +303,22 @@ async function setArtifactLifecycle(
 ) {
   const lifecycle = normalizeLifecycleInput(input);
   const artifactId = await resolveArtifactId(ctx, lifecycle.companyId, lifecycle.artifact);
+  await ctx.db.execute(
+    `UPDATE ${table(ctx.db.namespace, "source_artifacts")}
+     SET status = $1, updated_at = now()
+     WHERE id = $2 AND company_id = $3`,
+    [lifecycle.status, artifactId, lifecycle.companyId],
+  );
+
   const rows = await ctx.db.query<{
     id: string;
     status: string | null;
     updated_at: string;
   }>(
-    `UPDATE ${table(ctx.db.namespace, "source_artifacts")}
-     SET status = $1, updated_at = now()
-     WHERE id = $2 AND company_id = $3
-     RETURNING id, status, updated_at::text`,
-    [lifecycle.status, artifactId, lifecycle.companyId],
+    `SELECT id, status, updated_at::text
+     FROM ${table(ctx.db.namespace, "source_artifacts")}
+     WHERE id = $1 AND company_id = $2`,
+    [artifactId, lifecycle.companyId],
   );
   const row = rows[0];
   if (!row) {
@@ -377,7 +426,7 @@ async function upsertSurface(
   artifactId: string,
   event: NormalizedSourceEvent,
 ): Promise<string> {
-  const rows = await ctx.db.query<{ id: string }>(
+  await ctx.db.execute(
     `INSERT INTO ${table(ctx.db.namespace, "source_surfaces")}
       (artifact_id, surface, cursor_external_id, last_scan_at)
      VALUES ($1, $2, $3, now())
@@ -385,9 +434,16 @@ async function upsertSurface(
      DO UPDATE SET
        cursor_external_id = EXCLUDED.cursor_external_id,
        last_scan_at = now(),
-       updated_at = now()
-     RETURNING id`,
+       updated_at = now()`,
     [artifactId, event.surface, event.externalEventId],
+  );
+
+  const rows = await ctx.db.query<{ id: string }>(
+    `SELECT id
+     FROM ${table(ctx.db.namespace, "source_surfaces")}
+     WHERE artifact_id = $1
+       AND surface = $2`,
+    [artifactId, event.surface],
   );
 
   const id = rows[0]?.id;
@@ -404,43 +460,47 @@ async function recordSourceEvent(
   const event = normalizeSourceEvent(input);
   const artifactId = await upsertArtifact(ctx, event);
   const surfaceId = await upsertSurface(ctx, artifactId, event);
-
-  const rows = await ctx.db.query<{ id: string; inserted: boolean }>(
-    `WITH inserted AS (
-       INSERT INTO ${table(ctx.db.namespace, "source_events")}
-         (
-           company_id,
-           artifact_id,
-           surface_id,
-           source,
-           surface,
-           external_event_id,
-           external_parent_id,
-           version,
-           author_login,
-           author_type,
-           created_at_external,
-           updated_at_external,
-           body_text,
-           body_hash,
-           raw_payload,
-           status
-         )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz, $12::timestamptz, $13, $14, $15::jsonb, 'new')
-       ON CONFLICT (company_id, source, surface, external_event_id, version)
-       DO NOTHING
-       RETURNING id, true AS inserted
-     )
-     SELECT id, inserted FROM inserted
-     UNION ALL
-     SELECT id, false AS inserted
+  const existingRows = await ctx.db.query<{ id: string }>(
+    `SELECT id
      FROM ${table(ctx.db.namespace, "source_events")}
      WHERE company_id = $1
-       AND source = $4
-       AND surface = $5
-       AND external_event_id = $6
-       AND version = $8
+       AND source = $2
+       AND surface = $3
+       AND external_event_id = $4
+       AND version = $5
      LIMIT 1`,
+    [
+      event.companyId,
+      event.source,
+      event.surface,
+      event.externalEventId,
+      event.version,
+    ],
+  );
+
+  await ctx.db.execute(
+    `INSERT INTO ${table(ctx.db.namespace, "source_events")}
+      (
+        company_id,
+        artifact_id,
+        surface_id,
+        source,
+        surface,
+        external_event_id,
+        external_parent_id,
+        version,
+        author_login,
+        author_type,
+        created_at_external,
+        updated_at_external,
+        body_text,
+        body_hash,
+        raw_payload,
+        status
+      )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz, $12::timestamptz, $13, $14, $15::jsonb, 'new')
+     ON CONFLICT (company_id, source, surface, external_event_id, version)
+     DO NOTHING`,
     [
       event.companyId,
       artifactId,
@@ -460,12 +520,30 @@ async function recordSourceEvent(
     ],
   );
 
+  const rows = await ctx.db.query<{ id: string }>(
+    `SELECT id
+     FROM ${table(ctx.db.namespace, "source_events")}
+     WHERE company_id = $1
+       AND source = $2
+       AND surface = $3
+       AND external_event_id = $4
+       AND version = $5
+     LIMIT 1`,
+    [
+      event.companyId,
+      event.source,
+      event.surface,
+      event.externalEventId,
+      event.version,
+    ],
+  );
+
   const row = rows[0];
   if (!row) {
     throw new Error("source_events upsert returned no row");
   }
 
-  return { eventId: row.id, artifactId, inserted: row.inserted };
+  return { eventId: row.id, artifactId, inserted: existingRows.length === 0 };
 }
 
 async function recordWebhookDelivery(
