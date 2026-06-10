@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.github-pr-feedback",
   apiVersion: 1,
-  version: "0.1.10",
+  version: "0.1.11",
   displayName: "GitHub PR Feedback",
   description:
     "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
@@ -279,21 +279,16 @@ const manifest: PaperclipPluginManifestV1 = {
         routePath: "github-pr-feedback",
       },
       {
+        type: "sidebar",
+        id: "github-pr-feedback-sidebar",
+        displayName: "GitHub PR Feedback",
+        exportName: "GitHubSidebarLink",
+      },
+      {
         type: "settingsPage",
         id: "settings",
         displayName: "GitHub PR Feedback",
         exportName: "SettingsPage",
-      },
-    ],
-    launchers: [
-      {
-        id: "github-pr-feedback-sidebar",
-        displayName: "GitHub PR Feedback",
-        placementZone: "sidebar",
-        action: {
-          type: "navigate",
-          target: "github-pr-feedback",
-        },
       },
     ],
   },
