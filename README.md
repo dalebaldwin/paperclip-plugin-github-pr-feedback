@@ -83,11 +83,19 @@ Configure the repositories your agents should monitor:
 ```json
 {
   "repositories": ["example-org/example-repo", "example-org/another-repo"],
+  "defaultCompanyId": "your-paperclip-company-id",
+  "repositoryCompanyMap": {
+    "example-org/example-repo": "your-paperclip-company-id"
+  },
+  "githubTokenSecretRef": "secret:github-token",
   "ignoredAuthorPatterns": ["bot", "automation"]
 }
 ```
 
 These settings identify where to look. They are not credentials.
+`defaultCompanyId` or `repositoryCompanyMap` is required for webhook deliveries
+to create company-scoped GitHub artifacts. `githubTokenSecretRef` is used only
+by the backfill actions that repair missed PR artifacts from the GitHub API.
 
 ## Required GitHub Credentials
 
@@ -167,6 +175,8 @@ Supported actions:
 - `set-event-status` / `POST /event-status`
 - `coverage-audit` / `GET /coverage-audit`
 - `record-source-event` / `POST /source-events`
+- `backfill-pull-request` / `POST /backfill/pull-request`
+- `backfill-open-pull-requests` / `POST /backfill/open-pull-requests`
 
 Example artifact registration:
 
@@ -181,6 +191,17 @@ Example artifact registration:
   "title": "Fix checkout confirmation",
   "status": "active",
   "ownerLane": "product-engineering"
+}
+```
+
+Example backfill request for a PR that was created before webhook/source sync was
+configured:
+
+```json
+{
+  "companyId": "your-paperclip-company-id",
+  "repository": "example-org/example-repo",
+  "pullRequestNumber": 42
 }
 ```
 
