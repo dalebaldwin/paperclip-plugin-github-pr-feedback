@@ -12,15 +12,21 @@ describe("source graph routes", () => {
     expect(routes.get("source-events")).toBe("/events");
     expect(routes.get("set-event-status")).toBe("/event-status");
     expect(routes.get("ingest-event")).toBe("/source-events");
-    expect(routes.has("backfill-pull-request")).toBe(false);
-    expect(routes.has("backfill-open-pull-requests")).toBe(false);
+    expect(routes.get("backfill-pull-request")).toBe("/backfill/pull-request");
+    expect(routes.get("backfill-open-pull-requests")).toBe("/backfill/open-pull-requests");
     expect(routes.has("reconcile-active-surfaces")).toBe(false);
-    expect(manifest.capabilities).not.toContain("secrets.read-ref");
+    expect(manifest.capabilities).toContain("secrets.read-ref");
     expect(manifest.capabilities).not.toContain("jobs.schedule");
     expect(manifest.jobs ?? []).toHaveLength(0);
     expect(
       Object.keys(manifest.instanceConfigSchema?.properties ?? {}),
-    ).not.toContain("githubTokenSecretRef");
+    ).toEqual(
+      expect.arrayContaining([
+        "defaultCompanyId",
+        "githubTokenSecretRef",
+        "repositoryCompanyMap",
+      ]),
+    );
   });
 
   it("exposes the source graph page through an icon sidebar slot", () => {

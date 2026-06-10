@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.github-pr-feedback",
   apiVersion: 1,
-  version: "0.1.12",
+  version: "0.1.13",
   displayName: "GitHub PR Feedback",
   description:
     "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
@@ -16,6 +16,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "database.namespace.read",
     "database.namespace.write",
     "webhooks.receive",
+    "secrets.read-ref",
     "issues.read",
     "issues.create",
     "issues.wakeup",
@@ -42,6 +43,26 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "Repositories",
         items: { type: "string" },
         default: [],
+      },
+      defaultCompanyId: {
+        type: "string",
+        title: "Default company ID for webhook intake",
+        description:
+          "Used when GitHub webhook deliveries need to create company-scoped artifacts and no repository-specific company mapping is configured.",
+      },
+      repositoryCompanyMap: {
+        type: "object",
+        title: "Repository to company ID map",
+        description:
+          "Optional map of owner/name repositories to Paperclip company IDs for webhook intake.",
+        additionalProperties: { type: "string" },
+        default: {},
+      },
+      githubTokenSecretRef: {
+        type: "string",
+        title: "GitHub token secret ref",
+        description:
+          "Secret reference used by PR backfill actions to read GitHub comments, reviews, checks, and workflow runs.",
       },
       ignoredAuthorPatterns: {
         type: "array",
@@ -141,6 +162,22 @@ const manifest: PaperclipPluginManifestV1 = {
       routeKey: "set-event-status",
       method: "POST",
       path: "/event-status",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "backfill-pull-request",
+      method: "POST",
+      path: "/backfill/pull-request",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "backfill-open-pull-requests",
+      method: "POST",
+      path: "/backfill/open-pull-requests",
       auth: "board-or-agent",
       capability: "api.routes.register",
       companyResolution: { from: "body", key: "companyId" },

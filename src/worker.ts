@@ -12,6 +12,10 @@ import {
   stringField,
 } from "./intake.js";
 import {
+  backfillOpenPullRequests,
+  backfillPullRequest,
+} from "./backfill.js";
+import {
   expectedSurfacesForArtifact,
   normalizeArtifactInput,
   normalizeEdgeInput,
@@ -36,6 +40,7 @@ import type {
   SourceSurface,
   SourceSystem,
 } from "./types.js";
+import { buildGitHubWebhookIngestPlans } from "./webhook-intake.js";
 
 function table(namespace: string, name: string): string {
   return `${namespace}.${name}`;
@@ -866,6 +871,87 @@ async function recordWebhookDelivery(
   );
 }
 
+async function updateWebhookDeliveryStatus(
+  ctx: PluginContext,
+  requestId: string,
+  status: "processed" | "ignored" | "failed",
+  error?: string,
+) {
+  await ctx.db.execute(
+    `UPDATE ${table(ctx.db.namespace, "webhook_deliveries")}
+     SET status = $2,
+         error = $3,
+         updated_at = now()
+     WHERE request_id = $1`,
+    [requestId, status, error ?? null],
+  );
+}
+
+async function companyIdForWebhookRepository(
+  ctx: PluginContext,
+  repository: string | null,
+): Promise<string | null> {
+  const config = await ctx.config.get();
+  const repositoryCompanyMap = isRecord(config.repositoryCompanyMap)
+    ? config.repositoryCompanyMap
+    : {};
+  if (repository) {
+    const mapped = stringField(repositoryCompanyMap[repository]);
+    if (mapped) return mapped;
+  }
+
+  const defaultCompanyId = stringField(config.defaultCompanyId);
+  if (defaultCompanyId) return defaultCompanyId;
+
+  const companies = await ctx.companies.list({ limit: 2 });
+  return companies.length === 1 ? companies[0]?.id ?? null : null;
+}
+
+async function ingestGitHubWebhook(
+  ctx: PluginContext,
+  input: PluginWebhookInput,
+): Promise<number> {
+  const envelope = parseGitHubWebhook(
+    input.requestId,
+    input.headers,
+    input.parsedBody,
+  );
+  const repository = stringField(
+    isRecord(envelope.payload) && isRecord(envelope.payload.repository)
+      ? envelope.payload.repository.full_name
+      : undefined,
+  );
+  const companyId = await companyIdForWebhookRepository(ctx, repository);
+  if (!companyId) return 0;
+
+  const plans = buildGitHubWebhookIngestPlans({
+    companyId,
+    eventType: envelope.eventType,
+    deliveryId: envelope.webhookEventId,
+    payload: envelope.payload,
+  });
+
+  for (const plan of plans) {
+    await registerArtifact(ctx, plan.artifact);
+    for (const surface of plan.surfaces) {
+      await registerSourceSurface(ctx, {
+        companyId,
+        artifact: {
+          source: "github",
+          artifactKind: plan.artifact.artifactKind,
+          externalId: plan.artifact.externalId,
+        },
+        surface,
+      });
+    }
+    for (const event of plan.events) {
+      await recordSourceEvent(ctx, event);
+    }
+  }
+
+  return plans.length;
+}
+
 async function intakeStatus(ctx: PluginContext, companyId?: string | null) {
   const params = companyId ? [companyId] : [];
   const where = companyId ? "WHERE company_id = $1" : "";
@@ -965,6 +1051,18 @@ const plugin = definePlugin({
       return setSourceEventStatus(
         ctx,
         params as unknown as SetSourceEventStatusInput,
+      );
+    });
+
+    ctx.actions.register("backfill-pull-request", async (params) => {
+      return backfillPullRequest(ctx, params as never, (event) =>
+        recordSourceEvent(ctx, event),
+      );
+    });
+
+    ctx.actions.register("backfill-open-pull-requests", async (params) => {
+      return backfillOpenPullRequests(ctx, params as never, (event) =>
+        recordSourceEvent(ctx, event),
       );
     });
 
@@ -1115,6 +1213,32 @@ const plugin = definePlugin({
       };
     }
 
+    if (input.routeKey === "backfill-pull-request") {
+      if (!isRecord(input.body)) {
+        return { status: 400, body: { error: "JSON object body required" } };
+      }
+      return {
+        body: await backfillPullRequest(
+          currentContext(),
+          input.body as never,
+          (event) => recordSourceEvent(currentContext(), event),
+        ),
+      };
+    }
+
+    if (input.routeKey === "backfill-open-pull-requests") {
+      if (!isRecord(input.body)) {
+        return { status: 400, body: { error: "JSON object body required" } };
+      }
+      return {
+        body: await backfillOpenPullRequests(
+          currentContext(),
+          input.body as never,
+          (event) => recordSourceEvent(currentContext(), event),
+        ),
+      };
+    }
+
     if (input.routeKey === "coverage-audit") {
       const companyId = stringField(input.query.companyId);
       if (!companyId) {
@@ -1129,7 +1253,24 @@ const plugin = definePlugin({
   },
 
   async onWebhook(input: PluginWebhookInput) {
-    await recordWebhookDelivery(currentContext(), input);
+    const ctx = currentContext();
+    await recordWebhookDelivery(ctx, input);
+    try {
+      const processed = await ingestGitHubWebhook(ctx, input);
+      await updateWebhookDeliveryStatus(
+        ctx,
+        input.requestId,
+        processed > 0 ? "processed" : "ignored",
+      );
+    } catch (error) {
+      await updateWebhookDeliveryStatus(
+        ctx,
+        input.requestId,
+        "failed",
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   },
 
   async onHealth() {
