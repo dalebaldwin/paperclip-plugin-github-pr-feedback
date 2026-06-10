@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.github-pr-feedback",
   apiVersion: 1,
-  version: "0.1.9",
+  version: "0.1.10",
   displayName: "GitHub PR Feedback",
   description:
     "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
@@ -11,6 +11,7 @@ const manifest: PaperclipPluginManifestV1 = {
   categories: ["connector", "automation", "ui"],
   capabilities: [
     "api.routes.register",
+    "companies.read",
     "database.namespace.migrate",
     "database.namespace.read",
     "database.namespace.write",
@@ -166,6 +167,30 @@ const manifest: PaperclipPluginManifestV1 = {
       routeKey: "set-event-status",
       method: "POST",
       path: "/event-status",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "backfill-pull-request",
+      method: "POST",
+      path: "/backfill/pull-request",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "backfill-open-pull-requests",
+      method: "POST",
+      path: "/backfill/open-pull-requests",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
+    },
+    {
+      routeKey: "reconcile-active-surfaces",
+      method: "POST",
+      path: "/reconcile/active-surfaces",
       auth: "board-or-agent",
       capability: "api.routes.register",
       companyResolution: { from: "body", key: "companyId" },

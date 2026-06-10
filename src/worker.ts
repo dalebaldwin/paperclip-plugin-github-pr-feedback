@@ -12,6 +12,12 @@ import {
   stringField,
 } from "./intake.js";
 import {
+  backfillOpenPullRequests,
+  backfillPullRequest,
+  type BackfillOpenPullRequestsInput,
+  type BackfillPullRequestInput,
+} from "./backfill.js";
+import {
   expectedSurfacesForArtifact,
   normalizeArtifactInput,
   normalizeEdgeInput,
@@ -904,6 +910,47 @@ async function intakeStatus(ctx: PluginContext, companyId?: string | null) {
   };
 }
 
+async function reconcileActiveGitHubSurfaces(ctx: PluginContext) {
+  const companies = await ctx.companies.list({ limit: 100 });
+  let scannedArtifacts = 0;
+  let recordedEvents = 0;
+  for (const company of companies) {
+    const companyId = company.id;
+    const surfaces = await listActiveSurfaces(ctx, { companyId });
+    const pullRequests = new Map<string, { repository: string; number: number }>();
+    for (const surface of surfaces) {
+      if (surface.artifact_kind !== "pull_request") continue;
+      const repository = surface.external_id.split("#").at(0) ?? "";
+      const number = Number(surface.external_id.split("#").at(1));
+      if (!repository || !Number.isInteger(number)) continue;
+      pullRequests.set(surface.external_id, { repository, number });
+    }
+    for (const pullRequest of Array.from(pullRequests.values()).slice(0, 25)) {
+      try {
+        const result = await backfillPullRequest(
+          ctx,
+          {
+            companyId,
+            repository: pullRequest.repository,
+            pullRequestNumber: pullRequest.number,
+          },
+          (event) => recordSourceEvent(ctx, event),
+        );
+        scannedArtifacts += 1;
+        recordedEvents += result.recordedEvents;
+      } catch (error) {
+        ctx.logger.warn("GitHub PR reconciliation failed", {
+          companyId,
+          repository: pullRequest.repository,
+          pullRequestNumber: pullRequest.number,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+  return { scannedArtifacts, recordedEvents };
+}
+
 const plugin = definePlugin({
   async setup(ctx) {
     setupContext = ctx;
@@ -968,6 +1015,26 @@ const plugin = definePlugin({
       );
     });
 
+    ctx.actions.register("backfill-pull-request", async (params) => {
+      return backfillPullRequest(
+        ctx,
+        params as unknown as BackfillPullRequestInput,
+        (event) => recordSourceEvent(ctx, event),
+      );
+    });
+
+    ctx.actions.register("backfill-open-pull-requests", async (params) => {
+      return backfillOpenPullRequests(
+        ctx,
+        params as unknown as BackfillOpenPullRequestsInput,
+        (event) => recordSourceEvent(ctx, event),
+      );
+    });
+
+    ctx.actions.register("reconcile-active-surfaces", async () => {
+      return reconcileActiveGitHubSurfaces(ctx);
+    });
+
     ctx.data.register("active-surfaces", async (params) => {
       return listActiveSurfaces(
         ctx,
@@ -999,9 +1066,10 @@ const plugin = definePlugin({
     });
 
     ctx.jobs.register("hourly-reconcile", async (job) => {
-      ctx.logger.info("GitHub hourly reconciliation job fired", {
+      const result = await reconcileActiveGitHubSurfaces(ctx);
+      ctx.logger.info("GitHub hourly reconciliation job completed", {
         runId: job.runId,
-        status: "scanner-pending",
+        ...result,
       });
     });
 
@@ -1125,6 +1193,38 @@ const plugin = definePlugin({
           currentContext(),
           input.body as unknown as SetSourceEventStatusInput,
         ),
+      };
+    }
+
+    if (input.routeKey === "backfill-pull-request") {
+      if (!isRecord(input.body)) {
+        return { status: 400, body: { error: "JSON object body required" } };
+      }
+      return {
+        body: await backfillPullRequest(
+          currentContext(),
+          input.body as unknown as BackfillPullRequestInput,
+          (event) => recordSourceEvent(currentContext(), event),
+        ),
+      };
+    }
+
+    if (input.routeKey === "backfill-open-pull-requests") {
+      if (!isRecord(input.body)) {
+        return { status: 400, body: { error: "JSON object body required" } };
+      }
+      return {
+        body: await backfillOpenPullRequests(
+          currentContext(),
+          input.body as unknown as BackfillOpenPullRequestsInput,
+          (event) => recordSourceEvent(currentContext(), event),
+        ),
+      };
+    }
+
+    if (input.routeKey === "reconcile-active-surfaces") {
+      return {
+        body: await reconcileActiveGitHubSurfaces(currentContext()),
       };
     }
 
