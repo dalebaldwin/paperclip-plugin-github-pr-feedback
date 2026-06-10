@@ -21,13 +21,17 @@ import {
 } from "./registry.js";
 import type {
   ListActiveSurfacesInput,
+  ListSourceEventsInput,
+  ListTrackedArtifactsInput,
   NormalizedSourceEvent,
   RegisterSourceArtifactEdgeInput,
   RegisterSourceArtifactInput,
   RegisterSourceSurfaceInput,
   SetSourceArtifactLifecycleInput,
+  SetSourceEventStatusInput,
   SourceArtifactKind,
   SourceArtifactLifecycleStatus,
+  SourceEventStatus,
   SourceEventInput,
   SourceSurface,
   SourceSystem,
@@ -42,6 +46,29 @@ function buildInClause(startIndex: number, values: readonly unknown[]): string {
     throw new Error("IN clause values cannot be empty");
   }
   return values.map((_, index) => `$${startIndex + index}`).join(", ");
+}
+
+const EVENT_STATUSES: SourceEventStatus[] = [
+  "new",
+  "routed",
+  "ignored",
+  "blocked",
+];
+
+function normalizeLimit(value: unknown, fallback = 50, max = 200): number {
+  const parsed =
+    typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.min(Math.floor(parsed), max);
+}
+
+function normalizeEventStatus(value: unknown): SourceEventStatus {
+  if (typeof value === "string" && EVENT_STATUSES.includes(value as SourceEventStatus)) {
+    return value as SourceEventStatus;
+  }
+  throw new Error(`Invalid source event status: ${String(value)}`);
 }
 
 async function upsertArtifact(
@@ -432,6 +459,261 @@ async function coverageAudit(ctx: PluginContext, companyId: string) {
   };
 }
 
+async function listTrackedArtifacts(
+  ctx: PluginContext,
+  input: ListTrackedArtifactsInput,
+) {
+  const params = normalizeListActiveSurfacesInput(input);
+  const statuses = params.statuses ?? ["registered", "active", "grace", "reopened"];
+  const statusPlaceholders = buildInClause(2, statuses);
+  const artifacts = await ctx.db.query<{
+    id: string;
+    company_id: string;
+    source: SourceSystem;
+    artifact_kind: SourceArtifactKind;
+    external_id: string;
+    repository: string | null;
+    url: string | null;
+    title: string | null;
+    status: string | null;
+    owner_lane: string | null;
+    discovered_from: string | null;
+    last_seen_at: string | null;
+    updated_at: string | null;
+  }>(
+    `SELECT
+       id,
+       company_id,
+       source,
+       artifact_kind,
+       external_id,
+       repository,
+       url,
+       title,
+       status,
+       owner_lane,
+       discovered_from,
+       last_seen_at::text,
+       updated_at::text
+     FROM ${table(ctx.db.namespace, "source_artifacts")}
+     WHERE company_id = $1
+       AND COALESCE(status, 'registered') IN (${statusPlaceholders})
+     ORDER BY updated_at DESC, source, artifact_kind, external_id`,
+    [params.companyId, ...statuses],
+  );
+
+  if (artifacts.length === 0) {
+    return { artifacts: [] };
+  }
+
+  const artifactIds = artifacts.map((artifact) => artifact.id);
+  const surfacePlaceholders = buildInClause(1, artifactIds);
+  const surfaces = await ctx.db.query<{
+    id: string;
+    artifact_id: string;
+    surface: SourceSurface;
+    cursor_external_id: string | null;
+    cursor_version: string | null;
+    last_scan_at: string | null;
+  }>(
+    `SELECT
+       id,
+       artifact_id,
+       surface,
+       cursor_external_id,
+       cursor_version,
+       last_scan_at::text
+     FROM ${table(ctx.db.namespace, "source_surfaces")}
+     WHERE artifact_id IN (${surfacePlaceholders})
+     ORDER BY surface`,
+    artifactIds,
+  );
+  const eventCounts = await ctx.db.query<{
+    artifact_id: string;
+    status: string;
+    count: string;
+  }>(
+    `SELECT artifact_id, status, count(*)::text AS count
+     FROM ${table(ctx.db.namespace, "source_events")}
+     WHERE artifact_id IN (${surfacePlaceholders})
+     GROUP BY artifact_id, status`,
+    artifactIds,
+  );
+
+  const surfacesByArtifact = new Map<string, typeof surfaces>();
+  for (const surface of surfaces) {
+    const current = surfacesByArtifact.get(surface.artifact_id) ?? [];
+    current.push(surface);
+    surfacesByArtifact.set(surface.artifact_id, current);
+  }
+
+  const countsByArtifact = new Map<string, Record<string, number>>();
+  for (const row of eventCounts) {
+    const current = countsByArtifact.get(row.artifact_id) ?? {};
+    current[row.status] = Number(row.count);
+    countsByArtifact.set(row.artifact_id, current);
+  }
+
+  return {
+    artifacts: artifacts.map((artifact) => ({
+      id: artifact.id,
+      companyId: artifact.company_id,
+      source: artifact.source,
+      artifactKind: artifact.artifact_kind,
+      externalId: artifact.external_id,
+      repository: artifact.repository,
+      url: artifact.url,
+      title: artifact.title,
+      status: artifact.status,
+      ownerLane: artifact.owner_lane,
+      discoveredFrom: artifact.discovered_from,
+      lastSeenAt: artifact.last_seen_at,
+      updatedAt: artifact.updated_at,
+      surfaces: (surfacesByArtifact.get(artifact.id) ?? []).map((surface) => ({
+        id: surface.id,
+        surface: surface.surface,
+        cursorExternalId: surface.cursor_external_id,
+        cursorVersion: surface.cursor_version,
+        lastScanAt: surface.last_scan_at,
+      })),
+      eventCounts: countsByArtifact.get(artifact.id) ?? {},
+    })),
+  };
+}
+
+async function listSourceEvents(
+  ctx: PluginContext,
+  input: ListSourceEventsInput,
+) {
+  const companyId = stringField(input.companyId);
+  if (!companyId) {
+    throw new Error("companyId is required");
+  }
+
+  const where = ["e.company_id = $1"];
+  const values: unknown[] = [companyId];
+  if (input.artifactId) {
+    values.push(input.artifactId);
+    where.push(`e.artifact_id = $${values.length}`);
+  }
+  if (input.status) {
+    values.push(normalizeEventStatus(input.status));
+    where.push(`e.status = $${values.length}`);
+  }
+  const limit = normalizeLimit(input.limit);
+  values.push(limit);
+
+  const events = await ctx.db.query<{
+    id: string;
+    artifact_id: string;
+    source: SourceSystem;
+    surface: SourceSurface;
+    external_event_id: string;
+    external_parent_id: string | null;
+    version: string;
+    author_login: string | null;
+    author_type: string | null;
+    created_at_external: string | null;
+    updated_at_external: string | null;
+    body_text: string | null;
+    status: SourceEventStatus;
+    created_at: string;
+    artifact_kind: SourceArtifactKind;
+    artifact_external_id: string;
+    artifact_title: string | null;
+    artifact_url: string | null;
+  }>(
+    `SELECT
+       e.id,
+       e.artifact_id,
+       e.source,
+       e.surface,
+       e.external_event_id,
+       e.external_parent_id,
+       e.version,
+       e.author_login,
+       e.author_type,
+       e.created_at_external::text,
+       e.updated_at_external::text,
+       e.body_text,
+       e.status,
+       e.created_at::text,
+       a.artifact_kind,
+       a.external_id AS artifact_external_id,
+       a.title AS artifact_title,
+       a.url AS artifact_url
+     FROM ${table(ctx.db.namespace, "source_events")} e
+     JOIN ${table(ctx.db.namespace, "source_artifacts")} a
+       ON a.id = e.artifact_id
+     WHERE ${where.join(" AND ")}
+     ORDER BY e.created_at DESC
+     LIMIT $${values.length}`,
+    values,
+  );
+
+  return {
+    events: events.map((event) => ({
+      id: event.id,
+      artifactId: event.artifact_id,
+      source: event.source,
+      surface: event.surface,
+      externalEventId: event.external_event_id,
+      externalParentId: event.external_parent_id,
+      version: event.version,
+      authorLogin: event.author_login,
+      authorType: event.author_type,
+      createdAtExternal: event.created_at_external,
+      updatedAtExternal: event.updated_at_external,
+      bodyText: event.body_text,
+      status: event.status,
+      createdAt: event.created_at,
+      artifactKind: event.artifact_kind,
+      artifactExternalId: event.artifact_external_id,
+      artifactTitle: event.artifact_title,
+      artifactUrl: event.artifact_url,
+    })),
+  };
+}
+
+async function setSourceEventStatus(
+  ctx: PluginContext,
+  input: SetSourceEventStatusInput,
+) {
+  const companyId = stringField(input.companyId);
+  const eventId = stringField(input.eventId);
+  if (!companyId || !eventId) {
+    throw new Error("companyId and eventId are required");
+  }
+  const status = normalizeEventStatus(input.status);
+  await ctx.db.execute(
+    `UPDATE ${table(ctx.db.namespace, "source_events")}
+     SET status = $1, updated_at = now()
+     WHERE id = $2 AND company_id = $3`,
+    [status, eventId, companyId],
+  );
+
+  const rows = await ctx.db.query<{
+    id: string;
+    status: SourceEventStatus;
+    updated_at: string;
+  }>(
+    `SELECT id, status, updated_at::text
+     FROM ${table(ctx.db.namespace, "source_events")}
+     WHERE id = $1 AND company_id = $2`,
+    [eventId, companyId],
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error("source event status update returned no row");
+  }
+  return {
+    id: row.id,
+    status: row.status,
+    updatedAt: row.updated_at,
+    reason: input.reason ?? null,
+  };
+}
+
 async function upsertSurface(
   ctx: PluginContext,
   artifactId: string,
@@ -679,11 +961,29 @@ const plugin = definePlugin({
       );
     });
 
+    ctx.actions.register("set-event-status", async (params) => {
+      return setSourceEventStatus(
+        ctx,
+        params as unknown as SetSourceEventStatusInput,
+      );
+    });
+
     ctx.data.register("active-surfaces", async (params) => {
       return listActiveSurfaces(
         ctx,
         params as unknown as ListActiveSurfacesInput,
       );
+    });
+
+    ctx.data.register("tracked-artifacts", async (params) => {
+      return listTrackedArtifacts(
+        ctx,
+        params as unknown as ListTrackedArtifactsInput,
+      );
+    });
+
+    ctx.data.register("source-events", async (params) => {
+      return listSourceEvents(ctx, params as unknown as ListSourceEventsInput);
     });
 
     ctx.data.register("coverage-audit", async (params) => {
@@ -791,6 +1091,40 @@ const plugin = definePlugin({
           companyId: stringField(input.query.companyId) ?? "",
           statuses: queryList(input.query.status),
         }),
+      };
+    }
+
+    if (input.routeKey === "tracked-artifacts") {
+      return {
+        body: await listTrackedArtifacts(currentContext(), {
+          companyId: stringField(input.query.companyId) ?? "",
+          statuses: queryList(input.query.status),
+        }),
+      };
+    }
+
+    if (input.routeKey === "source-events") {
+      return {
+        body: await listSourceEvents(currentContext(), {
+          companyId: stringField(input.query.companyId) ?? "",
+          artifactId: stringField(input.query.artifactId) ?? undefined,
+          status: stringField(input.query.status) as SourceEventStatus | undefined,
+          limit: input.query.limit
+            ? Number.parseInt(String(input.query.limit), 10)
+            : undefined,
+        }),
+      };
+    }
+
+    if (input.routeKey === "set-event-status") {
+      if (!isRecord(input.body)) {
+        return { status: 400, body: { error: "JSON object body required" } };
+      }
+      return {
+        body: await setSourceEventStatus(
+          currentContext(),
+          input.body as unknown as SetSourceEventStatusInput,
+        ),
       };
     }
 
