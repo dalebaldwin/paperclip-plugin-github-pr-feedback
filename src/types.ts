@@ -75,6 +75,25 @@ export interface ListActiveSurfacesInput {
   statuses?: SourceArtifactLifecycleStatus[];
 }
 
+export interface ListTrackedArtifactsInput {
+  companyId: string;
+  statuses?: SourceArtifactLifecycleStatus[];
+}
+
+export interface ListSourceEventsInput {
+  companyId: string;
+  artifactId?: string;
+  status?: SourceEventStatus;
+  limit?: number;
+}
+
+export interface SetSourceEventStatusInput {
+  companyId: string;
+  eventId: string;
+  status: SourceEventStatus;
+  reason?: string;
+}
+
 export interface SourceEventInput {
   companyId: string;
   source: SourceSystem;

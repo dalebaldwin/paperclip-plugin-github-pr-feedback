@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip.github-pr-feedback",
   apiVersion: 1,
-  version: "0.1.7",
+  version: "0.1.8",
   displayName: "GitHub PR Feedback",
   description:
     "Builds a canonical GitHub pull request feedback, review, and check-run graph for Paperclip.",
@@ -144,6 +144,30 @@ const manifest: PaperclipPluginManifestV1 = {
       auth: "board-or-agent",
       capability: "api.routes.register",
       companyResolution: { from: "query", key: "companyId" },
+    },
+    {
+      routeKey: "tracked-artifacts",
+      method: "GET",
+      path: "/tracked-artifacts",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "query", key: "companyId" },
+    },
+    {
+      routeKey: "source-events",
+      method: "GET",
+      path: "/events",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "query", key: "companyId" },
+    },
+    {
+      routeKey: "set-event-status",
+      method: "POST",
+      path: "/event-status",
+      auth: "board-or-agent",
+      capability: "api.routes.register",
+      companyResolution: { from: "body", key: "companyId" },
     },
     {
       routeKey: "coverage-audit",
