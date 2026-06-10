@@ -37,6 +37,13 @@ function table(namespace: string, name: string): string {
   return `${namespace}.${name}`;
 }
 
+function buildInClause(startIndex: number, values: readonly unknown[]): string {
+  if (values.length === 0) {
+    throw new Error("IN clause values cannot be empty");
+  }
+  return values.map((_, index) => `$${startIndex + index}`).join(", ");
+}
+
 async function upsertArtifact(
   ctx: PluginContext,
   event: NormalizedSourceEvent,
@@ -337,6 +344,8 @@ async function listActiveSurfaces(
   input: ListActiveSurfacesInput,
 ) {
   const params = normalizeListActiveSurfacesInput(input);
+  const statuses = params.statuses ?? ["registered", "active", "grace", "reopened"];
+  const statusPlaceholders = buildInClause(2, statuses);
   return ctx.db.query<{
     artifact_id: string;
     source: SourceSystem;
@@ -366,13 +375,15 @@ async function listActiveSurfaces(
      JOIN ${table(ctx.db.namespace, "source_surfaces")} s
        ON s.artifact_id = a.id
      WHERE a.company_id = $1
-       AND COALESCE(a.status, 'registered') = ANY($2::text[])
+       AND COALESCE(a.status, 'registered') IN (${statusPlaceholders})
      ORDER BY a.source, a.artifact_kind, a.external_id, s.surface`,
-    [params.companyId, params.statuses],
+    [params.companyId, ...statuses],
   );
 }
 
 async function coverageAudit(ctx: PluginContext, companyId: string) {
+  const statuses = ["registered", "active", "grace", "reopened"];
+  const statusPlaceholders = buildInClause(2, statuses);
   const rows = await ctx.db.query<{
     artifact_id: string;
     source: SourceSystem;
@@ -392,10 +403,10 @@ async function coverageAudit(ctx: PluginContext, companyId: string) {
      LEFT JOIN ${table(ctx.db.namespace, "source_surfaces")} s
        ON s.artifact_id = a.id
      WHERE a.company_id = $1
-       AND COALESCE(a.status, 'registered') = ANY($2::text[])
+       AND COALESCE(a.status, 'registered') IN (${statusPlaceholders})
      GROUP BY a.id, a.source, a.artifact_kind, a.external_id, a.title
      ORDER BY a.source, a.artifact_kind, a.external_id`,
-    [companyId, ["registered", "active", "grace", "reopened"]],
+    [companyId, ...statuses],
   );
 
   const findings = [];
